@@ -78,7 +78,7 @@ def main():
         # Opening it triggers its normal initialization/update; no account is entered.
         device.app_start('com.android.vending')
         service = ''
-        deadline = time.monotonic() + 180
+        deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
             service = shell('cmd', 'package', 'query-services', '--brief', '--components',
                             '-a', 'com.android.vending.licensing.IBackgroundLicensingService',
@@ -89,6 +89,9 @@ def main():
             time.sleep(5)
         else:
             raise RuntimeError('Google Play background licensing service did not become available')
+        # Give first-boot package updates time to finish before native app startup.
+        print('Google Play licensing service ready; allowing package updates to settle...', flush=True)
+        time.sleep(30)
         collector.capture('play-service-ready', 'com.android.vending')
         config = shell('cmd', 'activity', 'get-config')
         timezone = shell('getprop', 'persist.sys.timezone')
