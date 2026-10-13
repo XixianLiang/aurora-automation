@@ -56,7 +56,7 @@ def main():
             nodes = list(ET.fromstring(device.dump_hierarchy(root_in_active=True)).iter('node'))
             # API 35/36 locale picker presents draggable language rows.
             rows = [node for node in nodes if any(child.get('resource-id') == 'com.android.settings:id/label'
-                    for child in list(node)) and any(child.get('resource-id') == 'com.android.settings:id/dragHandle'
+                    for child in node.iter('node')) and any(child.get('resource-id') == 'com.android.settings:id/dragHandle'
                     for child in list(node))]
             russian = next((row for row in rows if any('Русский' in child.get('text', '') for child in row.iter('node'))), None)
             if russian is not None and rows and russian is not rows[0]:
