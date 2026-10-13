@@ -74,6 +74,22 @@ def main():
                 collector.click(packageName='com.android.settings', text=label)
             collector.wait(russian_first, 'ru-RU first system locale')
             collector.capture('languages-after', 'com.android.settings')
+        # The factory Play Store can be too old for this APK's background license service.
+        # Opening it triggers its normal initialization/update; no account is entered.
+        device.app_start('com.android.vending')
+        service = ''
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            service = shell('cmd', 'package', 'query-services', '--brief', '--components',
+                            '-a', 'com.android.vending.licensing.IBackgroundLicensingService',
+                            '-p', 'com.android.vending')
+            if 'BackgroundLicensingService' in service:
+                break
+            print('Waiting for Google Play background licensing service...', flush=True)
+            time.sleep(5)
+        else:
+            raise RuntimeError('Google Play background licensing service did not become available')
+        collector.capture('play-service-ready', 'com.android.vending')
         config = shell('cmd', 'activity', 'get-config')
         timezone = shell('getprop', 'persist.sys.timezone')
         offset = shell('date', '+%z')
@@ -82,7 +98,8 @@ def main():
         result.update(status='success', configuration=config, timezone=timezone, utc_offset=offset,
                       supported_abis=shell('getprop', 'ro.product.cpu.abilist'),
                       native_bridge=shell('getprop', 'ro.dalvik.vm.native.bridge'),
-                      location_enabled=shell('cmd', 'location', 'is-location-enabled'))
+                      location_enabled=shell('cmd', 'location', 'is-location-enabled'),
+                      play_license_service=service)
         device.press('home')
     except Exception as error:
         result.update(status='error', error=str(error))

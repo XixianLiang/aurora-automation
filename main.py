@@ -49,6 +49,18 @@ class Collector:
         self.d.click((x1 + x2) // 2, (y1 + y2) // 2)
         time.sleep(.5)
 
+    def click_if_present(self, **selector):
+        mapping = {'packageName': 'package', 'resourceId': 'resource-id',
+                   'text': 'text', 'description': 'content-desc', 'className': 'class'}
+        for node in ET.fromstring(self.d.dump_hierarchy(root_in_active=True)).iter('node'):
+            if all(node.get(mapping[key]) == value for key, value in selector.items()):
+                bounds = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+                if len(bounds) == 4 and bounds[2] > bounds[0] and bounds[3] > bounds[1]:
+                    self.d.click((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
+                    time.sleep(.5)
+                    return True
+        return False
+
     def nodes(self, package):
         return [n for n in ET.fromstring(self.d.dump_hierarchy(root_in_active=True)).iter('node')
                 if n.get('package') == package]
@@ -102,8 +114,8 @@ class Collector:
                 self.click(packageName=WINDY, text=next(iter(texts & {'Установить единицы', 'Set units'})))
             elif texts & {'Настроить позже', 'Set up later'}:
                 self.capture(f'windy-onboarding-{step}', WINDY)
-                self.click(packageName=WINDY, text=next(iter(texts & {'Настроить позже', 'Set up later'})))
-            elif any(n.get('resource-id') == 'q' for n in nodes):
+                self.click_if_present(packageName=WINDY, text=next(iter(texts & {'Настроить позже', 'Set up later'})))
+            elif any(n.get('package') == WINDY and n.get('class') == 'android.widget.EditText' for n in nodes):
                 return
             else:
                 time.sleep(.5)
@@ -150,7 +162,7 @@ class Collector:
     def windy(self, query, exact_result=None):
         self.start(WINDY)
         self.prepare_windy()
-        self.wait(lambda: self.d(resourceId='q').exists, 'Windy loaded')
+        self.wait(lambda: self.d(packageName=WINDY, className='android.widget.EditText').exists, 'Windy loaded')
         # Close startup/detail/search panels to expose the menu.
         for _ in range(4):
             if self.d(packageName=WINDY, text='d').exists:
@@ -166,34 +178,27 @@ class Collector:
         wind_label = 'Ветер' if 'Ветер' in menu_descriptions else 'Wind'
         cloud_label = 'Облака' if 'Облака' in menu_descriptions else 'Clouds'
         self.click(packageName=WINDY, description=wind_label)
-        self.wait(lambda: self.d(resourceId='legend-mobile').get_text().startswith('m/s'),
+        self.wait(lambda: any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Wind baseline legend')
         self.click(packageName=WINDY, description=cloud_label)
-        self.wait(lambda: not self.d(resourceId='legend-mobile').get_text().startswith('m/s'),
+        self.wait(lambda: not any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Clouds layer legend changed')
         layer_evidence = self.capture('windy-layer', WINDY)
         self.d.press('back')
-        self.wait(lambda: not self.d(resourceId='plugin-menu').exists, 'menu closed')
+        self.wait(lambda: not any(n.get('content-desc') == cloud_label for n in self.nodes(WINDY)), 'menu closed')
         time.sleep(1)  # Allow menu close animation before tapping search.
         self.click(packageName=WINDY, text='\ue02c')
         time.sleep(.5)
-        self.d(resourceId='q').set_text(query)
+        self.d(packageName=WINDY, className='android.widget.EditText').set_text(query)
 
         def results():
-            for node in self.nodes(WINDY):
-                if node.get('resource-id') == 'plugin-search':
-                    return [n.get('content-desc') for n in node.iter('node')
-                            if n.get('content-desc')
-                            and n.get('content-desc')[0].isalpha()
-                            and not n.get('content-desc').startswith(('l ', 'Q ', 'O '))
-                            and n.get('content-desc') not in (
-                                'O All', 'Q Airports', '\ue008 Wx Stations',
-                                'l Webcams', '\ue002 Kite, Surf, WS',
-                                'O Все', 'Q Аэропорты', '\ue008 Метеостанции',
-                                'l Веб-камеры', '\ue002 Кайт, Серф, WS')
-                            and not any(
-                            child.get('content-desc') for child in n.iter('node') if child is not n)]
-            return []
+            # HTML IDs are absent in some cloud WebView builds; use result-card semantics.
+            return [node.get('content-desc') for node in self.nodes(WINDY)
+                    if node.get('content-desc') and node.get('clickable') == 'true'
+                    and node.get('class') == 'android.view.View'
+                    and node.get('content-desc')[0].isalpha()
+                    and not node.get('content-desc').startswith(('l ', 'Q ', 'O '))
+                    and len([child for child in node.iter('node') if child.get('text')]) >= 2]
 
         candidates = self.wait(results, 'Windy search results')
         # Select from location results after excluding search-category tabs.
@@ -206,11 +211,14 @@ class Collector:
         target = next(n for n in self.nodes(WINDY) if n.get('content-desc') == selected)
         x1, y1, x2, y2 = map(int, re.findall(r'\d+', target.get('bounds')))
         self.d.click((x1 + x2) // 2, (y1 + y2) // 2)
-        self.wait(lambda: self.d(resourceId='plugin-detail').exists, 'target forecast panel')
-        self.wait(lambda: not self.d(resourceId='plugin-search').exists, 'search completed')
+        def detail_present():
+            nodes = self.nodes(WINDY)
+            return any(n.get('resource-id') == 'plugin-detail' or n.get('text') in ('Source:', 'Источник:') for n in nodes)
+        self.wait(detail_present, 'target forecast panel')
+        self.wait(lambda: not results(), 'search completed')
         detail_evidence = self.capture('windy-location', WINDY)
         self.d.press('back')
-        self.wait(lambda: not self.d(resourceId='plugin-detail').exists, 'target map visible')
+        self.wait(lambda: not detail_present(), 'target map visible')
         time.sleep(2)
         map_evidence = self.capture('windy', WINDY)
         times = [t for t in map_evidence['visible_text'] if re.fullmatch(r'\d{1,2}:\d{2}|\d{1,2}(?::\d{2})?\s*[AP]M', t)]
