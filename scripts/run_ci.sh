@@ -11,6 +11,9 @@ collect_debug() {
   trap - EXIT
   timeout 15s adb -s "$serial" logcat -d > "$output/logcat.txt" 2>&1 || true
   timeout 15s adb -s "$serial" shell dumpsys activity activities > "$output/activities.txt" 2>&1 || true
+  timeout 15s adb -s "$serial" shell dumpsys location > "$output/location-service.txt" 2>&1 || true
+  free -m > "$output/host-memory.txt" 2>&1 || true
+  ps -eo pid,ppid,rss,comm > "$output/host-processes.txt" 2>&1 || true
   timeout 15s adb -s "$serial" shell getprop > "$output/device-properties.txt" 2>&1 || true
   exit "$rc"
 }

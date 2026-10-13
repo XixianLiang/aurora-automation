@@ -42,6 +42,7 @@ def main():
         shell('settings', 'put', 'global', 'auto_time_zone', '0')
         shell('cmd', 'alarm', 'set-timezone', 'Europe/Minsk')
         shell('settings', 'put', 'system', 'time_12_24', '24')
+        shell('cmd', 'location', 'set-location-enabled', 'true')
         if not russian_first():
             shell('am', 'start', '-a', 'android.settings.LOCALE_SETTINGS')
             time.sleep(1)
@@ -80,7 +81,8 @@ def main():
             raise RuntimeError(f'Unexpected timezone: {timezone} / {offset}')
         result.update(status='success', configuration=config, timezone=timezone, utc_offset=offset,
                       supported_abis=shell('getprop', 'ro.product.cpu.abilist'),
-                      native_bridge=shell('getprop', 'ro.dalvik.vm.native.bridge'))
+                      native_bridge=shell('getprop', 'ro.dalvik.vm.native.bridge'),
+                      location_enabled=shell('cmd', 'location', 'is-location-enabled'))
         device.press('home')
     except Exception as error:
         result.update(status='error', error=str(error))

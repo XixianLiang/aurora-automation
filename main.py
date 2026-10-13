@@ -270,6 +270,9 @@ class Collector:
         if not self.d.serial.startswith('emulator-'):
             raise RuntimeError('GPS injection requires an Android emulator')
         latitude, longitude = coordinates
+        enabled = self.d.shell(['cmd', 'location', 'set-location-enabled', 'true'])
+        if enabled.exit_code:
+            raise RuntimeError(enabled.output)
         for permission in ('ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'):
             response = self.d.shell(['pm', 'grant', AURORA, 'android.permission.' + permission])
             if response.exit_code:
@@ -296,6 +299,7 @@ class Collector:
             if response.exit_code:
                 raise RuntimeError(response.output)
             dump = response.output
+            (self.output / 'aurora-location-service.txt').write_text(dump, encoding='utf-8')
             for provider in ('fused', 'gps'):
                 matches = re.findall(r'last location=Location\[' + provider + r' (-?\d+\.\d+),(-?\d+\.\d+)', dump)
                 for lat_text, lon_text in matches:
