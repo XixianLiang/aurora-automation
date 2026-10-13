@@ -20,7 +20,26 @@ collect_debug() {
 trap collect_debug EXIT
 
 adb -s "$serial" wait-for-device
-uv run python scripts/prepare_emulator.py --serial "$serial" --output "$output/setup"
+run_with_recovery() {
+  stage="$1"
+  shift
+  for attempt in 1 2 3; do
+    if "$@"; then
+      return 0
+    fi
+    if [ -d "$output/$stage" ]; then
+      mv "$output/$stage" "$output/$stage-attempt-$attempt"
+    fi
+    if [ "$attempt" = 3 ]; then
+      return 1
+    fi
+    echo "$stage attempt $attempt failed; reconnecting emulator before retry"
+    sleep 10
+    timeout 60s adb -s "$serial" wait-for-device || true
+  done
+}
+
+run_with_recovery setup timeout --signal=TERM --kill-after=15s 12m uv run python scripts/prepare_emulator.py --serial "$serial" --output "$output/setup"
 uv run python install_aurora.py --serial "$serial" --source "$apk_dir/aurora-apks.zip" --fresh --report "$output/aurora-install.json"
 uv run python install_aurora.py --serial "$serial" --package com.windyty.android --source "$apk_dir/windy-apks.zip" --fresh --report "$output/windy-install.json"
-timeout --signal=TERM --kill-after=15s 8m uv run python main.py --serial "$serial" --location "${LOCATION:-Мурманск}" --aurora-gps "${LATITUDE:-68.9707}" "${LONGITUDE:-33.0827}" --timeout 90 --output "$output/collection"
+run_with_recovery collection timeout --signal=TERM --kill-after=15s 8m uv run python main.py --serial "$serial" --location "${LOCATION:-Мурманск}" --aurora-gps "${LATITUDE:-68.9707}" "${LONGITUDE:-33.0827}" --timeout 90 --output "$output/collection"
