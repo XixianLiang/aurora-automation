@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Device screenshots and collection evidence
+artifacts/
+
+# Local Android installation packages
+*.apk
+/aurora-apks/
+/windy-apks/
+/aurora-apks.zip
+*.xapk
+/aurora-xapk/
+
+# CI APK bundles
+/.ci-apks/
+/windy-apks.zip

@@ -1,0 +1,9 @@
+[project]
+name = "aurora-automation"
+version = "0.1.0"
+description = "Android UI collection for Windy clouds and Aurora location inputs"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "uiautomator2>=3.7,<4",
+]

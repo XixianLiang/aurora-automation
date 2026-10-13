@@ -1,0 +1,81 @@
+name: Android Aurora Collection
+
+on:
+  workflow_dispatch:
+    inputs:
+      location:
+        description: Place to search in Windy
+        default: Мурманск
+        required: true
+        type: string
+      latitude:
+        description: Aurora emulator GPS latitude
+        default: '68.9707'
+        required: true
+        type: string
+      longitude:
+        description: Aurora emulator GPS longitude
+        default: '33.0827'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-aurora-collection
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      LOCATION: ${{ inputs.location }}
+      LATITUDE: ${{ inputs.latitude }}
+      LONGITUDE: ${{ inputs.longitude }}
+      ANDROID_SERIAL: emulator-5554
+      APK_RELEASE: android-apps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up uv and Python
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.13'
+          enable-cache: true
+      - name: Install Python dependencies
+        run: uv sync --locked
+      - name: Download supplied APK bundles
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .ci-apks artifacts/ci
+          gh release download "$APK_RELEASE" --repo "$GITHUB_REPOSITORY" --pattern aurora-apks.zip --pattern windy-apks.zip --dir .ci-apks
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run collection in emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          profile: pixel_5
+          ram-size: 3072M
+          disk-size: 8G
+          emulator-port: 5554
+          emulator-boot-timeout: 600
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -timezone Europe/Minsk
+          script: bash scripts/run_ci.sh
+      - name: Upload JSON, screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurora-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/ci/
+          if-no-files-found: warn
+          retention-days: 7
