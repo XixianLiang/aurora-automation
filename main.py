@@ -275,9 +275,10 @@ class Collector:
             if response.exit_code:
                 raise RuntimeError(response.output)
         command = ['adb', '-s', self.d.serial, 'emu', 'geo', 'fix', str(longitude), str(latitude)]
-        response = subprocess.run(command, check=True, capture_output=True, text=True)
-        if 'OK' not in response.stdout or 'KO:' in response.stdout:
-            raise RuntimeError('GPS injection failed: ' + response.stdout)
+        def inject_gps():
+            response = subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
+            if 'OK' not in response.stdout or 'KO:' in response.stdout:
+                raise RuntimeError('GPS injection failed: ' + response.stdout)
         prefix = AURORA + ':id/'
         # Explicitly select current location, rather than reusing a saved custom city.
         self.click(resourceId=prefix + 'subtitle')
@@ -288,7 +289,13 @@ class Collector:
             self.click(resourceId='android:id/button1')
 
         def gps_fix():
-            dump = self.d.shell('dumpsys location').output
+            # A fresh emulator can discard fixes before an app registers its location request.
+            inject_gps()
+            time.sleep(.5)
+            response = self.d.shell('dumpsys location', timeout=10)
+            if response.exit_code:
+                raise RuntimeError(response.output)
+            dump = response.output
             for provider in ('fused', 'gps'):
                 matches = re.findall(r'last location=Location\[' + provider + r' (-?\d+\.\d+),(-?\d+\.\d+)', dump)
                 for lat_text, lon_text in matches:
