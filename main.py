@@ -377,11 +377,12 @@ def main():
             jobs.append(('aurora', lambda query, exact: collector.aurora(query, exact, args.aurora_gps), args.aurora_result))
         errors = {}
         for name, collect, exact_result in jobs:
-            print(f'{name}: collecting location UI...', flush=True)
+            print(f'::notice title=Collection::{name}: collecting location UI', flush=True)
             try:
                 source = collect(args.location, exact_result)
                 source['status'] = 'success'
                 result['sources'][name] = source
+                print(f'::notice title=Collection::{name}: success', flush=True)
             except Exception as error:
                 errors[name] = str(error)
                 source = {'status': 'error', 'error': str(error)}
@@ -391,6 +392,7 @@ def main():
                 except Exception as capture_error:
                     source['failure_capture_error'] = str(capture_error)
                 result['sources'][name] = source
+                print(f'::notice title=Collection::{name}: failed; inspect result.json', flush=True)
         if errors:
             result['errors'] = errors
             result['error'] = '; '.join(f'{name}: {error}' for name, error in errors.items())

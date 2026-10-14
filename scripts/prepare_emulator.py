@@ -76,6 +76,7 @@ def main():
                 collector.click(packageName='com.android.settings', text=label)
             collector.wait(russian_first, 'ru-RU first system locale')
             collector.capture('languages-after', 'com.android.settings')
+        print('::notice title=Emulator setup::Russian locale and Minsk timezone configured', flush=True)
         # The factory Play Store can be too old for this APK's background license service.
         # Opening it triggers its normal initialization/update; no account is entered.
         device.app_start('com.android.vending')
@@ -92,7 +93,7 @@ def main():
         else:
             raise RuntimeError('Google Play background licensing service did not become available')
         # Give first-boot package updates time to finish before native app startup.
-        print('Google Play licensing service ready; allowing package updates to settle...', flush=True)
+        print('::notice title=Emulator setup::Google Play licensing service ready; settling package updates', flush=True)
         time.sleep(30)
         collector.capture('play-service-ready', 'com.android.vending')
         config = shell('cmd', 'activity', 'get-config')
