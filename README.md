@@ -96,6 +96,9 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 
 ## GitHub Actions
 
+已验证完整云端成功：[运行 38587372685](https://github.com/XixianLiang/aurora-automation/actions/runs/38587372685)，对应提交 `7841a6a`。首次采集失败后自动重试，最终 `collection/result.json` 的整体及两款 App 状态均为 `success`。俄语、Europe/Minsk（UTC+3）、Windy 摩尔曼斯克 Clouds 图层以及 Aurora GPS 坐标均已从 JSON 和 hierarchy 核对。
+本地下载证据位于 `artifacts/actions-38587372685/aurora-inputs-38587372685-1/`。2026-10-14 23:26（Asia/Shanghai）的 Aurora 页面为 KP 1.67、当前概率 4%；该值是采集时的快照。
+
 实际 workflow 位于 `.github/workflows/android-collect.yml`；根目录 `android-quicktest.yml` 保留为原始 kea2 参考样例。
 采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。ARM64 APK 的兼容性在云端实际运行中验证。
 
