@@ -195,7 +195,15 @@ class Collector:
         self.click(packageName=WINDY, text='d')
         # Establish a known baseline so repeat runs verify a real layer change.
         def layer_menu():
-            tiles = layer_tiles(self.nodes(WINDY))
+            nodes = self.nodes(WINDY)
+            denial = next((n.get('text') for n in nodes if n.get('text') in (
+                'Не разрешать', "Don't allow", 'Do not allow')), None)
+            if denial:
+                self.capture('windy-location-permission', WINDY)
+                self.click(packageName=WINDY, text=denial)
+                self.click(packageName=WINDY, text='d')
+                return None
+            tiles = layer_tiles(nodes)
             return tiles if tiles.keys() & {'Ветер', 'Wind'} and tiles.keys() & {'Облака', 'Clouds'} else None
         menu_descriptions = self.wait(layer_menu, 'Windy layer menu loaded')
         wind_label = 'Ветер' if 'Ветер' in menu_descriptions else 'Wind'
