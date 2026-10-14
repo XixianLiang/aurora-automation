@@ -24,6 +24,7 @@ def now():
 class Collector:
     def __init__(self, device, output, timeout):
         self.d, self.output, self.timeout = device, output, timeout
+        self.error_dialog_count = 0
         self.output.mkdir(parents=True, exist_ok=True)
 
     def wait(self, predicate, description):
@@ -39,7 +40,17 @@ class Collector:
         mapping = {'packageName': 'package', 'resourceId': 'resource-id',
                    'text': 'text', 'description': 'content-desc', 'className': 'class'}
         def find():
-            for node in ET.fromstring(self.d.dump_hierarchy(root_in_active=True)).iter('node'):
+            nodes = list(ET.fromstring(self.d.dump_hierarchy(root_in_active=True)).iter('node'))
+            # First boot or a display change can leave a system ANR dialog on top.
+            close = next((n for n in nodes if n.get('resource-id') == 'android:id/aerr_close'), None)
+            if close is not None and selector.get('resourceId') != 'android:id/aerr_close':
+                self.error_dialog_count += 1
+                self.capture(f'system-app-error-{self.error_dialog_count}', 'android')
+                bounds = list(map(int, re.findall(r'\d+', close.get('bounds', ''))))
+                self.d.click((bounds[0] + bounds[2]) // 2, (bounds[1] + bounds[3]) // 2)
+                time.sleep(.5)
+                return None
+            for node in nodes:
                 if all(node.get(mapping[key]) == value for key, value in selector.items()):
                     bounds = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
                     if len(bounds) == 4 and bounds[2] > bounds[0] and bounds[3] > bounds[1]:
@@ -217,7 +228,12 @@ class Collector:
         self.wait(detail_present, 'target forecast panel')
         self.wait(lambda: not results(), 'search completed')
         detail_evidence = self.capture('windy-location', WINDY)
-        self.d.press('back')
+        # A forecast-model introduction can consume the first Back press.
+        for _ in range(3):
+            if not detail_present():
+                break
+            self.d.press('back')
+            time.sleep(.5)
         self.wait(lambda: not detail_present(), 'target map visible')
         time.sleep(2)
         map_evidence = self.capture('windy', WINDY)
