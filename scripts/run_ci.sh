@@ -30,8 +30,13 @@ adb -s "$serial" wait-for-device
 run_with_recovery() {
   stage="$1"
   shift
+  stage_deadline=$((SECONDS + 720))
   for attempt in 1 2 3; do
-    if "$@"; then
+    remaining=$((stage_deadline - SECONDS))
+    if [ "$remaining" -le 0 ]; then
+      return 1
+    fi
+    if timeout --signal=TERM --kill-after=15s "${remaining}s" "$@"; then
       return 0
     fi
     if [ -d "$output/$stage" ]; then
