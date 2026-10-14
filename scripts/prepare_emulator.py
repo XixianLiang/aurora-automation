@@ -39,6 +39,8 @@ def main():
         return bool(re.search(r'config:.*?(?:^|-)ru-rRU(?:,|-)', config)) and not bool(re.search(r'config:.*?-en-rUS,ru-rRU', config))
 
     try:
+        shell('wm', 'size', '720x1280')
+        shell('wm', 'density', '320')
         shell('settings', 'put', 'global', 'auto_time_zone', '0')
         shell('cmd', 'alarm', 'set-timezone', 'Europe/Minsk')
         shell('settings', 'put', 'system', 'time_12_24', '24')

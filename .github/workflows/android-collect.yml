@@ -64,13 +64,13 @@ jobs:
           target: google_apis_playstore
           arch: x86_64
           profile: pixel_5
-          ram-size: 3072M
+          cores: 4
+          ram-size: 4096M
           disk-size: 8G
-          emulator-build: 14214601
           emulator-port: 5554
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Minsk
+          emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Minsk
           script: bash scripts/run_ci.sh
       - name: Upload JSON, screenshots and logs
         if: always()

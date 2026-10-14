@@ -5,10 +5,17 @@ serial="${ANDROID_SERIAL:-emulator-5554}"
 apk_dir="${APK_DIR:-.ci-apks}"
 output="${COLLECTION_OUTPUT:-artifacts/ci}"
 mkdir -p "$output"
+adb -s "$serial" logcat -v threadtime > "$output/logcat-live.txt" 2>&1 &
+logcat_pid=$!
 
 collect_debug() {
   rc=$?
   trap - EXIT
+  kill "$logcat_pid" 2>/dev/null || true
+  sudo dmesg --ctime > "$output/host-kernel.txt" 2>&1 || true
+  if [ -d /tmp/android-runner ]; then
+    cp -R /tmp/android-runner "$output/emulator-crash" || true
+  fi
   timeout 15s adb -s "$serial" logcat -d > "$output/logcat.txt" 2>&1 || true
   timeout 15s adb -s "$serial" shell dumpsys activity activities > "$output/activities.txt" 2>&1 || true
   timeout 15s adb -s "$serial" shell dumpsys location > "$output/location-service.txt" 2>&1 || true

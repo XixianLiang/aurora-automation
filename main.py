@@ -369,12 +369,12 @@ def main():
         collector = Collector(device, output, args.timeout)
         result['device_serial'] = device.serial
         result['device_environment'] = collector.device_environment()
-        # Collect Aurora first so the final screen stays on Windy's target cloud map.
+        # Collect Windy first so Aurora failure cannot prevent cloud-map evidence.
         jobs = []
-        if args.app in ('both', 'aurora'):
-            jobs.append(('aurora', lambda query, exact: collector.aurora(query, exact, args.aurora_gps), args.aurora_result))
         if args.app in ('both', 'windy'):
             jobs.append(('windy', collector.windy, args.windy_result))
+        if args.app in ('both', 'aurora'):
+            jobs.append(('aurora', lambda query, exact: collector.aurora(query, exact, args.aurora_gps), args.aurora_result))
         errors = {}
         for name, collect, exact_result in jobs:
             print(f'{name}: collecting location UI...', flush=True)

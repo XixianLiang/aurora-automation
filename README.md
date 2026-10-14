@@ -99,6 +99,7 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。ARM64 APK 的兼容性在云端实际运行中验证。
 
 手动触发时可输入 Windy 地点和 Aurora GPS 经纬度。首次部署会自动设置俄语、Europe/Minsk、安装 App 并处理引导。
+Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。模拟器设置和采集失败时各最多执行 3 次，失败证据保留在 `setup-attempt-*` / `collection-attempt-*`；最终采集仍失败则 workflow 返回失败。
 安装包从同仓库 `android-apps` release 获取，不放入 Git 历史；release 文件为 `aurora-apks.zip` 和 `windy-apks.zip`，仅包含 APK。
 无论运行成功与否，上传 `artifacts/ci/` 中的 JSON、截图、界面 XML 和日志，保存 7 天。当前没有启用定时调度。
 
