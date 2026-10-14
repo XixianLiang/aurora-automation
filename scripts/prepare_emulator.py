@@ -80,6 +80,9 @@ def main():
         # The factory Play Store can be too old for this APK's background license service.
         # Opening it triggers its normal initialization/update; no account is entered.
         device.app_start('com.android.vending')
+        time.sleep(2)
+        # Play defers self-update installation while its store UI is foreground.
+        device.press('home')
         service = ''
         deadline = time.monotonic() + 600
         while time.monotonic() < deadline:
