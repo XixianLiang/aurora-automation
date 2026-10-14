@@ -92,6 +92,7 @@ JSON 记录 requested_coordinates 和 emulator_location_fix；Aurora 首页只�
 `artifacts/emulator-fresh-success/result.json` 是使用 `install_aurora.py --fresh` 删除旧安装、重装后，从 Aurora 首次引导开始的完整双 App 运行；整体状态为 `success`。
 Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并选择俄语 Clouds 图层。
 `artifacts/emulator-gps-complete/result.json` 是此前另一次成功运行。自定义搜索模式的失败证据保留在 `artifacts/aurora-after-installer/`。
+`artifacts/local-cli-sequential/result.json` 是新版脚本的本地成功结果：无窗口模拟器、CLI 调用、仅用 hierarchy 定位控件，Windy 先选云图再搜索摩尔曼斯克，然后采集 Aurora。
 
 ## GitHub Actions
 
@@ -99,9 +100,10 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。ARM64 APK 的兼容性在云端实际运行中验证。
 
 手动触发时可输入 Windy 地点和 Aurora GPS 经纬度。首次部署会自动设置俄语、Europe/Minsk、安装 App 并处理引导。
-Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。模拟器设置和采集失败时各最多执行 3 次，失败证据保留在 `setup-attempt-*` / `collection-attempt-*`；最终采集仍失败则 workflow 返回失败。
+Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。打开商店后返回桌面，允许其安装排队的自动更新。模拟器设置和采集失败时各最多执行 3 次，每阶段所有重试共用 12 分钟预算；失败证据保留在 `setup-attempt-*` / `collection-attempt-*`，最终采集仍失败则 workflow 返回失败。
 安装包从同仓库 `android-apps` release 获取，不放入 Git 历史；release 文件为 `aurora-apks.zip` 和 `windy-apks.zip`，仅包含 APK。
 无论运行成功与否，上传 `artifacts/ci/` 中的 JSON、截图、界面 XML 和日志，保存 7 天。当前没有启用定时调度。
+Android 操作通过 uiautomator2 hierarchy 和 ADB 完成，截图用于取证，不参与控件定位。Actions 调试使用 `gh run view <RUN_ID> --log-failed`、`gh run download <RUN_ID>` 和 `gh api repos/XixianLiang/aurora-automation/check-runs/<JOB_ID>/annotations`；不需要 VLM 查看 Chrome。
 
 ```sh
 gh workflow run android-collect.yml --repo XixianLiang/aurora-automation \
