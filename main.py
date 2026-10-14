@@ -21,6 +21,18 @@ def now():
     return datetime.now(ZoneInfo('Asia/Shanghai')).isoformat(timespec='seconds')
 
 
+def layer_tiles(nodes):
+    tiles = {}
+    for node in nodes:
+        description = node.get('content-desc', '')
+        if node.get('clickable') != 'true':
+            continue
+        for label in ('Ветер', 'Wind', 'Облака', 'Clouds'):
+            if description == label or description.endswith(' ' + label):
+                tiles[label] = description
+    return tiles
+
+
 class Collector:
     def __init__(self, device, output, timeout):
         self.d, self.output, self.timeout = device, output, timeout
@@ -183,20 +195,21 @@ class Collector:
         self.click(packageName=WINDY, text='d')
         # Establish a known baseline so repeat runs verify a real layer change.
         def layer_menu():
-            descriptions = {n.get('content-desc') for n in self.nodes(WINDY)}
-            return descriptions if descriptions & {'Ветер', 'Wind'} else None
+            tiles = layer_tiles(self.nodes(WINDY))
+            return tiles if tiles.keys() & {'Ветер', 'Wind'} and tiles.keys() & {'Облака', 'Clouds'} else None
         menu_descriptions = self.wait(layer_menu, 'Windy layer menu loaded')
         wind_label = 'Ветер' if 'Ветер' in menu_descriptions else 'Wind'
         cloud_label = 'Облака' if 'Облака' in menu_descriptions else 'Clouds'
-        self.click(packageName=WINDY, description=wind_label)
+        self.click(packageName=WINDY, description=menu_descriptions[wind_label])
         self.wait(lambda: any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Wind baseline legend')
-        self.click(packageName=WINDY, description=cloud_label)
+        cloud_description = self.wait(layer_menu, 'Windy cloud tile')[cloud_label]
+        self.click(packageName=WINDY, description=cloud_description)
         self.wait(lambda: not any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Clouds layer legend changed')
         layer_evidence = self.capture('windy-layer', WINDY)
         self.d.press('back')
-        self.wait(lambda: not any(n.get('content-desc') == cloud_label for n in self.nodes(WINDY)), 'menu closed')
+        self.wait(lambda: not layer_tiles(self.nodes(WINDY)), 'menu closed')
         time.sleep(1)  # Allow menu close animation before tapping search.
         self.click(packageName=WINDY, text='\ue02c')
         time.sleep(.5)
