@@ -99,6 +99,9 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 
 ## GitHub Actions
 
+新版已完整云端验证成功：[运行 38774304488](https://github.com/XixianLiang/aurora-automation/actions/runs/38774304488)，对应提交 `eb6b7a3`，首次采集即整体及两款 App 均为 `success`。已核对俄语首选语言、`Europe/Moscow`、摩尔曼斯克 Clouds 图层和 **2026-10-15 23:00 MSK** 时间轴；Aurora 的 network 模拟定位为 `68.9707,33.0827`，最终地图截图位于摩尔曼斯克。北京时间 2026-10-16 01:15 的 Aurora 快照为 KP 1.67、当前概率 20%，不代表晚上 23:00 的极光预测。19 项测试通过，workflow 每天 `09:00 UTC`（12:00 MSK）执行。
+本地证据：`artifacts/actions-38774304488/aurora-inputs-38774304488-1/collection/`，包括 `result.json`、两款 App 的截图/XML 和定位转储。
+
 已验证完整云端成功：[运行 38587372685](https://github.com/XixianLiang/aurora-automation/actions/runs/38587372685)，对应提交 `7841a6a`。首次采集失败后自动重试，最终 `collection/result.json` 的整体及两款 App 状态均为 `success`。俄语、Europe/Minsk（UTC+3）、Windy 摩尔曼斯克 Clouds 图层以及 Aurora GPS 坐标均已从 JSON 和 hierarchy 核对（该次历史运行使用旧时区设置）。
 本地下载证据位于 `artifacts/actions-38587372685/aurora-inputs-38587372685-1/`。2026-10-14 23:26（Asia/Shanghai）的 Aurora 页面为 KP 1.67、当前概率 4%；该值是采集时的快照。
 
