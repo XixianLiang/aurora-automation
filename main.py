@@ -6,7 +6,7 @@ import sys
 import subprocess
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from zoneinfo import ZoneInfo
@@ -31,6 +31,52 @@ def layer_tiles(nodes):
             if description == label or description.endswith(' ' + label):
                 tiles[label] = description
     return tiles
+
+
+def find_windy_calendar(nodes):
+    calendar = next((n for n in nodes if n.get('resource-id') == 'plugin-mobile-calendar'), None)
+    if calendar is not None:
+        return calendar
+    # Hosted WebView builds can omit HTML IDs from the accessibility tree.
+    candidates = []
+    for node in nodes:
+        descendants = list(node.iter('node'))
+        dates = sum(bool(re.fullmatch(r'[А-Яа-яЁё]+\s+\d{1,2}', n.get('text', ''))) for n in descendants)
+        has_time = any(re.fullmatch(r'\d{1,2}:\d{2}|\d{1,2}(?::\d{2})?\s*[AP]M', n.get('text', '')) for n in descendants)
+        if dates >= 2 and has_time and any(n.get('scrollable') == 'true' for n in descendants):
+            candidates.append((len(descendants), node))
+    return min(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
+def windy_calendar_state(calendar, tomorrow):
+    def bounds(node):
+        return list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+
+    nodes = list(calendar.iter('node'))
+    days = [(int(match[1]), bounds(n)[0]) for n in nodes
+            if (match := re.fullmatch(r'[А-Яа-яЁё]+\s+(\d{1,2})', n.get('text', '')))]
+    # A heading clipped at the left edge does not identify its midnight position.
+    starts = [x for _, x in days if x > 0]
+    if len(starts) < 2:
+        raise RuntimeError('Not enough visible calendar days to measure the timeline')
+    day_width = starts[1] - starts[0]
+    midnight = next((x for day, x in days if day == tomorrow and x > 0), None)
+    if midnight is None:
+        raise RuntimeError('Tomorrow is not visible in the Windy timeline')
+    time_node = next((n for n in nodes if re.fullmatch(r'\d{1,2}:\d{2}|\d{1,2}(?::\d{2})?\s*[AP]M', n.get('text', ''))), None)
+    if time_node is None:
+        raise RuntimeError('Windy selected forecast hour is missing')
+    label = time_node.get('text')
+    hour = int(re.match(r'\d+', label)[0])
+    if label.endswith(('AM', 'PM')):
+        hour = hour % 12 + (12 if label.endswith('PM') else 0)
+    b = bounds(time_node)
+    pointer_x = (b[0] + b[2]) / 2
+    row = next(n for n in nodes if n.get('scrollable') == 'true')
+    # Aim inside the 23:00 hour's selection area, away from its rounding boundary.
+    return {'hour': hour, 'pointer_x': pointer_x, 'target_x': midnight - day_width / 48,
+            'on_target_day': midnight - day_width <= pointer_x < midnight,
+            'y': bounds(row)[1] + (bounds(row)[3] - bounds(row)[1]) * .2}
 
 
 class Collector:
@@ -183,6 +229,9 @@ class Collector:
         }
 
     def windy(self, query, exact_result=None):
+        environment = self.device_environment()
+        if environment['timezone'] != 'Europe/Moscow' or 'ru-rRU' not in environment['configuration'].split(',')[0]:
+            raise RuntimeError('Windy requires Russian as the first language and Europe/Moscow timezone; run scripts/prepare_emulator.py first')
         self.start(WINDY)
         self.prepare_windy()
         self.wait(lambda: self.d(packageName=WINDY, className='android.widget.EditText').exists, 'Windy loaded')
@@ -212,6 +261,12 @@ class Collector:
         self.wait(lambda: any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Wind baseline legend')
         cloud_description = self.wait(layer_menu, 'Windy cloud tile')[cloud_label]
+        cloud_node = next(n for n in self.nodes(WINDY) if n.get('content-desc') == cloud_description)
+        cloud_bounds = list(map(int, re.findall(r'\d+', cloud_node.get('bounds'))))
+        if (cloud_bounds[1] + cloud_bounds[3]) / 2 > self.d.window_size()[1] * .8:
+            # The compact menu fades its bottom row behind the calendar; expose it first.
+            self.d.swipe(.7, .75, .7, .45, duration=.5)
+            time.sleep(.5)
         self.click(packageName=WINDY, description=cloud_description)
         self.wait(lambda: not any(n.get('text', '').startswith('m/s') and len(n.get('text', '')) > 5 for n in self.nodes(WINDY)),
                   'Clouds layer legend changed')
@@ -256,16 +311,40 @@ class Collector:
             self.d.press('back')
             time.sleep(.5)
         self.wait(lambda: not detail_present(), 'target map visible')
+        forecast_time = self.windy_tonight()
         time.sleep(2)
         map_evidence = self.capture('windy', WINDY)
         times = [t for t in map_evidence['visible_text'] if re.fullmatch(r'\d{1,2}:\d{2}|\d{1,2}(?::\d{2})?\s*[AP]M', t)]
         return {'package': WINDY, 'query': query, 'selected_location': selected,
                 'search_candidates': candidates, 'layer': 'Clouds', 'layer_ui_label': cloud_label,
                 'layer_confirmation': 'Clouds tile clicked; legend changed from Wind baseline',
-                'forecast_time_text': times, 'forecast_time_iso': None,
-                'forecast_timezone': None, 'cloud_cover_percent': None,
+                'forecast_time_text': times, 'forecast_time_iso': forecast_time,
+                'forecast_timezone': 'Europe/Moscow', 'cloud_cover_percent': None,
                 'evidence': {'layer': layer_evidence, 'search': search_evidence,
                              'location': detail_evidence, 'map': map_evidence}}
+
+    def windy_tonight(self):
+        """Drag the UI calendar to today's 23:00 MSK and verify both day and hour."""
+        device_now = datetime.fromisoformat(self.d.shell('date +%Y-%m-%dT%H:%M:%S%z').output.strip())
+        target = device_now.astimezone(ZoneInfo('Europe/Moscow')).replace(hour=23, minute=0, second=0, microsecond=0)
+        tomorrow = (target + timedelta(days=1)).day
+        self.capture('windy-time-before', WINDY)
+        for _ in range(8):
+            calendar = find_windy_calendar(self.nodes(WINDY))
+            if calendar is None:
+                raise RuntimeError('Windy timeline is missing')
+            state = windy_calendar_state(calendar, tomorrow)
+            if state['hour'] == 23 and state['on_target_day']:
+                return target.isoformat(timespec='seconds')
+            delta = state['target_x'] - state['pointer_x']
+            width = self.d.window_size()[0]
+            # Android consumes touch slop before the calendar starts scrolling.
+            distance = min(abs(delta) + width / 45, width * .65)
+            start = width * (.8 if delta > 0 else .2)
+            end = start - math.copysign(distance, delta)
+            self.d.swipe(start, state['y'], end, state['y'], duration=1)
+            time.sleep(1)
+        raise RuntimeError('Windy timeline did not reach today 23:00 MSK')
 
     def aurora(self, query, exact_result=None, gps_coordinates=None):
         self.start(AURORA)
@@ -379,7 +458,7 @@ class Collector:
 
 def main():
     parser = argparse.ArgumentParser(description='Search Windy/Aurora and save UI evidence.')
-    parser.add_argument('--location', default='Murmansk')
+    parser.add_argument('--location', default='Мурманск')
     parser.add_argument('--app', choices=['both', 'windy', 'aurora'], default='both')
     parser.add_argument('--serial', help='ADB serial; required when multiple devices are connected')
     parser.add_argument('--output', type=Path, help='Output directory (default: timestamped artifacts folder)')

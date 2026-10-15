@@ -1,6 +1,9 @@
 name: Android Aurora Collection
 
 on:
+  schedule:
+    # Daily 12:00 MSK (UTC+3).
+    - cron: '0 9 * * *'
   workflow_dispatch:
     inputs:
       location:
@@ -31,9 +34,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      LOCATION: ${{ inputs.location }}
-      LATITUDE: ${{ inputs.latitude }}
-      LONGITUDE: ${{ inputs.longitude }}
+      LOCATION: ${{ inputs.location || 'Мурманск' }}
+      LATITUDE: ${{ inputs.latitude || '68.9707' }}
+      LONGITUDE: ${{ inputs.longitude || '33.0827' }}
       ANDROID_SERIAL: emulator-5554
       APK_RELEASE: android-apps
     steps:
@@ -46,6 +49,8 @@ jobs:
           enable-cache: true
       - name: Install Python dependencies
         run: uv sync --locked
+      - name: Check forecast date and time parsing
+        run: uv run python -m unittest discover -s tests
       - name: Download supplied APK bundles
         env:
           GH_TOKEN: ${{ github.token }}
@@ -70,7 +75,7 @@ jobs:
           emulator-port: 5554
           emulator-boot-timeout: 600
           disable-animations: true
-          emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Minsk
+          emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Moscow
           script: bash scripts/run_ci.sh
       - name: Upload JSON, screenshots and logs
         if: always()

@@ -42,20 +42,29 @@ def main():
         shell('wm', 'size', '720x1280')
         shell('wm', 'density', '320')
         shell('settings', 'put', 'global', 'auto_time_zone', '0')
-        shell('cmd', 'alarm', 'set-timezone', 'Europe/Minsk')
+        shell('cmd', 'alarm', 'set-timezone', 'Europe/Moscow')
         shell('settings', 'put', 'system', 'time_12_24', '24')
         shell('cmd', 'location', 'set-location-enabled', 'true')
         if not russian_first():
             shell('am', 'start', '-a', 'android.settings.LOCALE_SETTINGS')
             time.sleep(1)
             collector.capture('languages-before', 'com.android.settings')
-            collector.click(resourceId='com.android.settings:id/add_language')
-            collector.click(resourceId='android:id/locale_search_menu')
-            device(resourceId='android:id/search_src_text').set_text('Russian')
-            collector.click(packageName='com.android.settings', text='Русский')
-            collector.click(packageName='com.android.settings', text='Россия')
+            if not any('Русский' in n.get('text', '') for n in collector.nodes('com.android.settings')):
+                collector.click(resourceId='com.android.settings:id/add_language')
+                collector.click(resourceId='android:id/locale_search_menu')
+                device(resourceId='android:id/search_src_text').set_text('Russian')
+                collector.click(packageName='com.android.settings', text='Русский')
+                collector.click(packageName='com.android.settings', text='Россия')
             time.sleep(1)
             collector.capture('languages-added', 'com.android.settings')
+            # On a compact display, the Russian row/handle can start below the fold.
+            for _ in range(3):
+                nodes = collector.nodes('com.android.settings')
+                handles = [n for n in nodes if n.get('resource-id') == 'com.android.settings:id/dragHandle'
+                           and int(re.findall(r'\d+', n.get('bounds'))[3]) - int(re.findall(r'\d+', n.get('bounds'))[1]) > 20]
+                if len(handles) >= 2:
+                    break
+                device.swipe(.5, .8, .5, .4, duration=.5)
             nodes = list(ET.fromstring(device.dump_hierarchy(root_in_active=True)).iter('node'))
             # API 35/36 locale picker presents draggable language rows.
             rows = [node for node in nodes if any(child.get('resource-id') == 'com.android.settings:id/label'
@@ -76,7 +85,7 @@ def main():
                 collector.click(packageName='com.android.settings', text=label)
             collector.wait(russian_first, 'ru-RU first system locale')
             collector.capture('languages-after', 'com.android.settings')
-        print('::notice title=Emulator setup::Russian locale and Minsk timezone configured', flush=True)
+        print('::notice title=Emulator setup::Russian locale and Moscow timezone configured', flush=True)
         # The factory Play Store can be too old for this APK's background license service.
         # Opening it triggers its normal initialization/update; no account is entered.
         device.app_start('com.android.vending')
@@ -102,7 +111,7 @@ def main():
         config = shell('cmd', 'activity', 'get-config')
         timezone = shell('getprop', 'persist.sys.timezone')
         offset = shell('date', '+%z')
-        if timezone != 'Europe/Minsk' or offset != '+0300':
+        if timezone != 'Europe/Moscow' or offset != '+0300':
             raise RuntimeError(f'Unexpected timezone: {timezone} / {offset}')
         result.update(status='success', configuration=config, timezone=timezone, utc_offset=offset,
                       supported_abis=shell('getprop', 'ro.product.cpu.abilist'),

@@ -5,7 +5,7 @@
 ## 当前模拟器
 
 - AVD：`Pixel_9`；ADB：`emulator-5554`；ARM64 Google Play 系统镜像。
-- 系统首选语言：`ru-RU`；时区：`Europe/Minsk`（UTC+3）；自动时区关闭。
+- 系统首选语言：`ru-RU`；时区：`Europe/Moscow`（UTC+3）；自动时区关闭。
 - 本机 HTTP 代理：`10.0.2.2:7890`，对应宿主机现有代理。
 - Windy 界面为俄语；提供的 Aurora 安装包使用英文界面。
 
@@ -36,13 +36,14 @@ adb -s emulator-5554 shell pm list packages -i com.jrustonapps.myauroraforecast
 
 ## 采集
 
-Windy 顺序：菜单 → Wind 基线 → Clouds / Облака → 搜索地点 → 选择地点 → 关闭详情 → 保存云图。
+Windy 顺序：菜单 → Wind 基线 → Clouds / Облака → 搜索地点 → 选择地点 → 关闭详情 → 将时间轴调到当天 23:00 MSK → 保存云图。
 脚本自动处理已观察到的首次引导：m/s、°C、跳过定位与兴趣；Aurora 的 Welcome、Next、Finish 和权限弹窗也会处理并保存截图。
 
 ### 正常搜索模式
 
 ```sh
-uv run main.py --serial emulator-5554 --location Murmansk --timeout 45
+uv run python scripts/prepare_emulator.py --serial emulator-5554
+uv run main.py --serial emulator-5554 --location Мурманск --timeout 45
 ```
 
 Windy 选择第一条地理地点结果，排除分类、摄像头和站点。Aurora 选择第一条地点建议。同名地点可用 `--windy-result` 和 `--aurora-result` 指定完整结果文本。
@@ -68,13 +69,13 @@ JSON 记录 requested_coordinates 和 emulator_location_fix；Aurora 首页只�
 每次运行输出到 `artifacts/时间戳/`，也可指定 `--output 目录`。
 
 - `result.json`：输入、设备语言/时区/时间、安装来源、各 App 状态、地点/坐标、Aurora 当前 KP 和概率、图层、原始页面文本。
-- `windy-layer.png/xml`、`windy-search.png/xml`、`windy-location.png/xml`、`windy.png/xml`：图层、搜索、详情、最终云图。
+- `windy-layer.png/xml`、`windy-search.png/xml`、`windy-location.png/xml`、`windy-time-before.png/xml`、`windy.png/xml`：图层、搜索、详情、调时前页面、当天 23:00 MSK 最终云图。
 - `aurora-search.png/xml`（搜索模式）、`aurora.png/xml`：搜索和首页。
 - `*-onboarding-*.png/xml`：首次引导。
 - `*-failure.png/xml`：失败证据。
 
 单个 App 失败不阻止另一个采集；部分成功状态为 `partial`，进程仍返回非零退出码。
-采集时间使用带偏移的 Asia/Shanghai；设备时区另行记录。Windy 预报时间保留原文，不凭设备时区推断完整日期。
+采集时间使用带偏移的 Asia/Shanghai；设备时区另行记录。Windy 运行前核对俄语首选语言和 Europe/Moscow 时区，按设备 MSK 日期选择当天 23:00；同时核对时间轴的日期和小时，JSON 保存带 +03:00 偏移的完整预报时间。
 云图目前保留截图，不从颜色推算云量百分比。Aurora 指标来自当前首页，不代表未来逐小时预测。
 
 ## 根目录安装文件
@@ -94,18 +95,20 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 `artifacts/emulator-gps-complete/result.json` 是此前另一次成功运行。自定义搜索模式的失败证据保留在 `artifacts/aurora-after-installer/`。
 `artifacts/local-cli-sequential/result.json` 是新版脚本的本地成功结果：无窗口模拟器、CLI 调用、仅用 hierarchy 定位控件，Windy 先选云图再搜索摩尔曼斯克，然后采集 Aurora。
 
+新版当天 23:00 MSK 流程已在本地 1080×2424 和 720×1280 模拟器验证；证据分别位于 `artifacts/script-msk23-verify/` 和 `artifacts/script-msk23-720-fixed/`。日期、12/24 小时制、跨月及无 HTML ID 的时间轴解析检查：`uv run python -m unittest discover -s tests`。
+
 ## GitHub Actions
 
-已验证完整云端成功：[运行 38587372685](https://github.com/XixianLiang/aurora-automation/actions/runs/38587372685)，对应提交 `7841a6a`。首次采集失败后自动重试，最终 `collection/result.json` 的整体及两款 App 状态均为 `success`。俄语、Europe/Minsk（UTC+3）、Windy 摩尔曼斯克 Clouds 图层以及 Aurora GPS 坐标均已从 JSON 和 hierarchy 核对。
+已验证完整云端成功：[运行 38587372685](https://github.com/XixianLiang/aurora-automation/actions/runs/38587372685)，对应提交 `7841a6a`。首次采集失败后自动重试，最终 `collection/result.json` 的整体及两款 App 状态均为 `success`。俄语、Europe/Minsk（UTC+3）、Windy 摩尔曼斯克 Clouds 图层以及 Aurora GPS 坐标均已从 JSON 和 hierarchy 核对（该次历史运行使用旧时区设置）。
 本地下载证据位于 `artifacts/actions-38587372685/aurora-inputs-38587372685-1/`。2026-10-14 23:26（Asia/Shanghai）的 Aurora 页面为 KP 1.67、当前概率 4%；该值是采集时的快照。
 
 实际 workflow 位于 `.github/workflows/android-collect.yml`；根目录 `android-quicktest.yml` 保留为原始 kea2 参考样例。
 采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。ARM64 APK 的兼容性在云端实际运行中验证。
 
-手动触发时可输入 Windy 地点和 Aurora GPS 经纬度。首次部署会自动设置俄语、Europe/Minsk、安装 App 并处理引导。
+手动触发时可输入 Windy 地点和 Aurora GPS 经纬度。首次部署会自动设置俄语、Europe/Moscow、安装 App 并处理引导。
 Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。打开商店后返回桌面，允许其安装排队的自动更新。模拟器设置和采集失败时各最多执行 3 次，每阶段所有重试共用 12 分钟预算；失败证据保留在 `setup-attempt-*` / `collection-attempt-*`，最终采集仍失败则 workflow 返回失败。
 安装包从同仓库 `android-apps` release 获取，不放入 Git 历史；release 文件为 `aurora-apks.zip` 和 `windy-apks.zip`，仅包含 APK。
-无论运行成功与否，上传 `artifacts/ci/` 中的 JSON、截图、界面 XML 和日志，保存 7 天。当前没有启用定时调度。
+无论运行成功与否，上传 `artifacts/ci/` 中的 JSON、截图、界面 XML 和日志，保存 7 天。每天 MSK 12:00（北京时间 17:00、UTC 09:00）自动执行，cron 为 `0 9 * * *`；采集当天 MSK 23:00 的云图。GitHub 定时任务可能排队延迟。
 Android 操作通过 uiautomator2 hierarchy 和 ADB 完成，截图用于取证，不参与控件定位。Actions 调试使用 `gh run view <RUN_ID> --log-failed`、`gh run download <RUN_ID>` 和 `gh api repos/XixianLiang/aurora-automation/check-runs/<JOB_ID>/annotations`；不需要 VLM 查看 Chrome。
 
 ```sh
