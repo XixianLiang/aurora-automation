@@ -109,7 +109,7 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。打开商店后返回桌面，允许其安装排队的自动更新。模拟器设置和采集失败时各最多执行 3 次，每阶段所有重试共用 12 分钟预算；失败证据保留在 `setup-attempt-*` / `collection-attempt-*`，最终采集仍失败则 workflow 返回失败。
 安装包从同仓库 `android-apps` release 获取，不放入 Git 历史；release 文件为 `aurora-apks.zip` 和 `windy-apks.zip`，仅包含 APK。
 无论运行成功与否，上传 `artifacts/ci/` 中的 JSON、截图、界面 XML 和日志，保存 7 天。每天 MSK 12:00（北京时间 17:00、UTC 09:00）自动执行，cron 为 `0 9 * * *`；采集当天 MSK 23:00 的云图。GitHub 定时任务可能排队延迟。
-Android 操作通过 uiautomator2 hierarchy 和 ADB 完成，截图用于取证，不参与控件定位。Actions 调试使用 `gh run view <RUN_ID> --log-failed`、`gh run download <RUN_ID>` 和 `gh api repos/XixianLiang/aurora-automation/check-runs/<JOB_ID>/annotations`；不需要 VLM 查看 Chrome。
+Android 操作通过 uiautomator2 hierarchy 和 ADB 完成，截图用于取证，不参与控件定位。读取或幂等赋值遇到截断 JSON/断连时最多尝试 3 次；点击、滑动、拖动和按键直接用 ADB input，不重放可能已执行的点击。Windy 启动时等待菜单控件出现，避免过早 Back 退出 App。Actions 调试使用 `gh run view <RUN_ID> --log-failed`、`gh run download <RUN_ID>` 和 `gh api repos/XixianLiang/aurora-automation/check-runs/<JOB_ID>/annotations`；不需要 VLM 查看 Chrome。
 
 ```sh
 gh workflow run android-collect.yml --repo XixianLiang/aurora-automation \

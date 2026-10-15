@@ -5,6 +5,8 @@ import re
 import sys
 import math
 import time
+import traceback
+from http.client import IncompleteRead, RemoteDisconnected
 from datetime import datetime, timedelta
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -14,6 +16,46 @@ import uiautomator2 as u2
 
 WINDY = 'com.windyty.android'
 AURORA = 'com.jrustonapps.myauroraforecast'
+
+
+class ReliableDevice(u2.Device):
+    # Only reads and assignments of the same value may be safely replayed.
+    RETRYABLE_RPC = {'dumpWindowHierarchy', 'deviceInfo', 'exist', 'count', 'objInfo',
+                     'getText', 'takeScreenshot', 'setText', 'clearTextField',
+                     'getClipboard', 'setClipboard', 'wakeUp'}
+
+    def jsonrpc_call(self, method, params=None, timeout=10):
+        for attempt in range(3):
+            try:
+                return super().jsonrpc_call(method, params, timeout)
+            except (json.JSONDecodeError, RemoteDisconnected, IncompleteRead, ConnectionError):
+                if method not in self.RETRYABLE_RPC or attempt == 2:
+                    raise
+                print(f'::notice title=UI transport::{method}: retrying interrupted response', flush=True)
+                time.sleep(.5)
+
+    def _point(self, x, y):
+        width, height = self.window_size()
+        return (int(x * width) if isinstance(x, float) and 0 <= x <= 1 else int(x),
+                int(y * height) if isinstance(y, float) and 0 <= y <= 1 else int(y))
+
+    def _input(self, *arguments):
+        response = self.shell(['input', *map(str, arguments)])
+        if response.exit_code:
+            raise RuntimeError(response.output)
+
+    def click(self, x, y):
+        self._input('tap', *self._point(x, y))
+
+    def swipe(self, fx, fy, tx, ty, duration=.5, steps=None):
+        self._input('swipe', *self._point(fx, fy), *self._point(tx, ty), int(duration * 1000))
+
+    def drag(self, sx, sy, ex, ey, duration=.5):
+        self._input('draganddrop', *self._point(sx, sy), *self._point(ex, ey), int(duration * 1000))
+
+    def press(self, key, meta=None):
+        codes = {'back': 'KEYCODE_BACK', 'home': 'KEYCODE_HOME', 'enter': 'KEYCODE_ENTER'}
+        self._input('keyevent', codes.get(key, key))
 
 
 def now():
@@ -248,12 +290,9 @@ class Collector:
         self.start(WINDY)
         self.prepare_windy()
         self.wait(lambda: self.d(packageName=WINDY, className='android.widget.EditText').exists, 'Windy loaded')
-        # Close startup/detail/search panels to expose the menu.
-        for _ in range(4):
-            if self.d(packageName=WINDY, text='d').exists:
-                break
-            self.d.press('back')
-            time.sleep(.5)
+        # Controls appear after the search field; Back during startup can exit Windy.
+        self.wait(lambda: any(n.get('text') == 'd' for n in self.nodes(WINDY)),
+                  'Windy map controls loaded')
         self.click(packageName=WINDY, text='d')
         # Establish a known baseline so repeat runs verify a real layer change.
         def layer_menu():
@@ -514,7 +553,7 @@ def main():
               'status': 'running', 'sources': {}}
     collector = None
     try:
-        device = u2.connect(args.serial) if args.serial else u2.connect()
+        device = ReliableDevice(args.serial or u2.connect().serial)
         collector = Collector(device, output, args.timeout)
         result['device_serial'] = device.serial
         result['device_environment'] = collector.device_environment()
@@ -533,6 +572,7 @@ def main():
                 result['sources'][name] = source
                 print(f'::notice title=Collection::{name}: success', flush=True)
             except Exception as error:
+                (output / f'{name}-traceback.txt').write_text(traceback.format_exc(), encoding='utf-8')
                 errors[name] = str(error)
                 source = {'status': 'error', 'error': str(error)}
                 try:

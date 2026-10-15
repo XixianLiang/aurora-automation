@@ -8,7 +8,7 @@ import time
 from xml.etree import ElementTree as ET
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from main import Collector
+from main import Collector, ReliableDevice
 import uiautomator2 as u2
 
 
@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     if not args.serial.startswith('emulator-'):
         parser.error('Only emulator serials are accepted')
-    device = u2.connect(args.serial)
+    device = ReliableDevice(args.serial)
     collector = Collector(device, args.output, 60)
     result = {'serial': args.serial}
 
