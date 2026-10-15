@@ -60,7 +60,7 @@ uv run main.py --serial emulator-5554 --location Мурманск \
   --aurora-gps 68.9707 33.0827 --timeout 45
 ```
 
-`--aurora-gps` 参数顺序为纬度、经度；仅接受 Android 模拟器。脚本核对 network 提供器的最后定位是否为目标坐标、带有 mock 标记，且有 Aurora 的定位订阅。使用 Android `cmd location providers` 测试接口，避免 App 只订阅 network 时 GPS 注入无法生效。JSON 中 `location_mode=emulator_test_providers`，明确记录模拟坐标来源。
+`--aurora-gps` 参数顺序为纬度、经度；仅接受 Android 模拟器。脚本核对 network 提供器的最后定位是否为目标坐标且带有 mock 标记；Aurora 的订阅情况单独记录。App 可能读取最后已知定位而不持续订阅，因此不把订阅存在作为必要条件，也不声称界面已显示城市或坐标。使用 Android `cmd location providers` 测试接口，避免 App 只订阅 network 时 GPS 注入无法生效。JSON 中 `location_mode=emulator_test_providers`，明确记录模拟坐标来源。
 JSON 记录 requested_coordinates 和 emulator_location_fix；Aurora 首页只显示“current location”，因此不会声称 App 已显示城市名称。
 该方式不等同于 Aurora 的自定义地点搜索通过，也不自动把其他城市名称转换成坐标。
 
@@ -103,7 +103,7 @@ Aurora 使用明确指定的 GPS 坐标；Windy 搜索「Мурманск」并�
 本地下载证据位于 `artifacts/actions-38587372685/aurora-inputs-38587372685-1/`。2026-10-14 23:26（Asia/Shanghai）的 Aurora 页面为 KP 1.67、当前概率 4%；该值是采集时的快照。
 
 实际 workflow 位于 `.github/workflows/android-collect.yml`；根目录 `android-quicktest.yml` 保留为原始 kea2 参考样例。
-采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。ARM64 APK 的兼容性在云端实际运行中验证。
+采用 `reactivecircus/android-emulator-runner@v2`、Ubuntu、API 35 Google Play x86_64 镜像。模拟器固定为 36.2.12（build `14214601`），使用 `-gpu swiftshader`，避免 37.2.12 的自动 software/swangle 路径在本次云端运行中发生 RenderThread 段错误。ARM64 APK 的兼容性在云端实际运行中验证。
 
 手动触发时可输入 Windy 地点和 Aurora GPS 经纬度。首次部署会自动设置俄语、Europe/Moscow、安装 App 并处理引导。
 Google Play 首次自动更新最多等待 10 分钟，再确认后台授权服务可用。打开商店后返回桌面，允许其安装排队的自动更新。模拟器设置和采集失败时各最多执行 3 次，每阶段所有重试共用 12 分钟预算；失败证据保留在 `setup-attempt-*` / `collection-attempt-*`，最终采集仍失败则 workflow 返回失败。

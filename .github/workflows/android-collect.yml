@@ -74,8 +74,9 @@ jobs:
           disk-size: 8G
           emulator-port: 5554
           emulator-boot-timeout: 600
+          emulator-build: '14214601'
           disable-animations: true
-          emulator-options: -no-window -gpu software -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Moscow
+          emulator-options: -no-window -gpu swiftshader -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none -feature -Vulkan -no-metrics -timezone Europe/Moscow
           script: bash scripts/run_ci.sh
       - name: Upload JSON, screenshots and logs
         if: always()

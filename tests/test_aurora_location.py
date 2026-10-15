@@ -26,8 +26,13 @@ class LocationTests(unittest.TestCase):
     def test_default_us_network_is_rejected_even_if_gps_matches(self):
         self.assertIsNone(aurora_network_fix(location_dump(39.237255, -123.150032), 68.9707, 33.0827))
 
-    def test_unrelated_listener_is_rejected(self):
-        self.assertIsNone(aurora_network_fix(location_dump(listener='com.google.android.gms'), 68.9707, 33.0827))
+    def test_last_known_fix_without_subscription_is_recorded_honestly(self):
+        fix = aurora_network_fix(location_dump(listener='com.google.android.gms'), 68.9707, 33.0827)
+        self.assertFalse(fix['aurora_listener_present'])
+
+    def test_mock_provider_heading(self):
+        dump = location_dump().replace('network provider:', 'network provider [mock]:').replace('gps provider:', 'gps provider [mock]:')
+        self.assertIsNotNone(aurora_network_fix(dump, 68.9707, 33.0827))
 
     def test_unmarked_location_is_rejected(self):
         self.assertIsNone(aurora_network_fix(location_dump(mock=''), 68.9707, 33.0827))

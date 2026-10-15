@@ -33,8 +33,8 @@ def layer_tiles(nodes):
 
 
 def aurora_network_fix(dump, latitude, longitude):
-    section = re.search(r'\n    network provider:\n(.*?)(?=\n    \w+ provider:|\n  Historical|\Z)', dump, re.S)
-    if not section or AURORA not in section[1]:
+    section = re.search(r'\n    network provider(?: \[mock\])?:\n(.*?)(?=\n    \w+ provider(?: \[mock\])?:|\n  Historical|\Z)', dump, re.S)
+    if not section:
         return None
     fix = re.search(r'last location=Location\[network (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)[^\n]*', section[1])
     if not fix or 'mock' not in fix[0]:
@@ -42,7 +42,7 @@ def aurora_network_fix(dump, latitude, longitude):
     lat, lon = float(fix[1]), float(fix[2])
     if abs(lat - latitude) < .0001 and abs(lon - longitude) < .0001:
         return {'provider': 'network', 'latitude': lat, 'longitude': lon, 'mock': True,
-                'aurora_listener_present': True}
+                'aurora_listener_present': AURORA in section[1]}
     return None
 
 
@@ -464,7 +464,7 @@ class Collector:
             (self.output / 'aurora-location-service.txt').write_text(dump, encoding='utf-8')
             return aurora_network_fix(dump, latitude, longitude)
 
-        location_proof = self.wait(gps_fix, 'target mock network location delivered to Aurora')
+        location_proof = self.wait(gps_fix, 'target mock network location installed in emulator')
         subtitle = self.wait(lambda: self._aurora_subtitle(prefix, 'current location'),
                              'Aurora probability updated for current injected location')
         title = self.d(resourceId=prefix + 'title').get_text()
@@ -475,6 +475,7 @@ class Collector:
                 'selected_location': None, 'requested_coordinates': {
                     'latitude': latitude, 'longitude': longitude},
                 'emulator_location_fix': location_proof,
+                'location_confirmation': 'System network mock coordinates verified; Aurora current location selected. App does not display city or coordinates.',
                 'location_label': 'current location',
                 'kp_index': float(kp[1]) if kp else None,
                 'probability_percent': float(chance[1]) if chance else None,
