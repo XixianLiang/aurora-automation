@@ -74,6 +74,17 @@ def layer_tiles(nodes):
     return tiles
 
 
+def windy_startup_action(nodes):
+    texts = {n.get('text') for n in nodes}
+    if 'd' in texts:
+        return 'ready'
+    if texts & {'Не разрешать', "Don't allow", 'Do not allow'}:
+        return 'deny_location'
+    if '\ue91d' in texts or '\ue013' in texts:
+        return 'close_panel'
+    return 'wait'
+
+
 def aurora_network_fix(dump, latitude, longitude):
     section = re.search(r'\n    network provider(?: \[mock\])?:\n(.*?)(?=\n    \w+ provider(?: \[mock\])?:|\n  Historical|\Z)', dump, re.S)
     if not section:
@@ -290,9 +301,25 @@ class Collector:
         self.start(WINDY)
         self.prepare_windy()
         self.wait(lambda: self.d(packageName=WINDY, className='android.widget.EditText').exists, 'Windy loaded')
-        # Controls appear after the search field; Back during startup can exit Windy.
-        self.wait(lambda: any(n.get('text') == 'd' for n in self.nodes(WINDY)),
-                  'Windy map controls loaded')
+        # A delayed location explanation hides all map controls from accessibility.
+        closed_panels = 0
+        def map_controls():
+            nonlocal closed_panels
+            nodes = self.nodes(WINDY)
+            action = windy_startup_action(nodes)
+            if action == 'ready':
+                return True
+            if action == 'deny_location':
+                self.capture('windy-startup-location', WINDY)
+                label = next(n.get('text') for n in nodes if n.get('text') in (
+                    'Не разрешать', "Don't allow", 'Do not allow'))
+                self.click(packageName=WINDY, text=label)
+            elif action == 'close_panel' and closed_panels < 2:
+                self.capture(f'windy-startup-panel-{closed_panels}', WINDY)
+                self.d.press('back')
+                closed_panels += 1
+            return None
+        self.wait(map_controls, 'Windy map controls loaded')
         self.click(packageName=WINDY, text='d')
         # Establish a known baseline so repeat runs verify a real layer change.
         def layer_menu():
