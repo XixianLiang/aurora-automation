@@ -3,7 +3,6 @@ import argparse
 import json
 import re
 import sys
-import subprocess
 import math
 import time
 from datetime import datetime, timedelta
@@ -31,6 +30,20 @@ def layer_tiles(nodes):
             if description == label or description.endswith(' ' + label):
                 tiles[label] = description
     return tiles
+
+
+def aurora_network_fix(dump, latitude, longitude):
+    section = re.search(r'\n    network provider:\n(.*?)(?=\n    \w+ provider:|\n  Historical|\Z)', dump, re.S)
+    if not section or AURORA not in section[1]:
+        return None
+    fix = re.search(r'last location=Location\[network (-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)[^\n]*', section[1])
+    if not fix or 'mock' not in fix[0]:
+        return None
+    lat, lon = float(fix[1]), float(fix[2])
+    if abs(lat - latitude) < .0001 and abs(lon - longitude) < .0001:
+        return {'provider': 'network', 'latitude': lat, 'longitude': lon, 'mock': True,
+                'aurora_listener_present': True}
+    return None
 
 
 def find_windy_calendar(nodes):
@@ -347,6 +360,17 @@ class Collector:
         raise RuntimeError('Windy timeline did not reach today 23:00 MSK')
 
     def aurora(self, query, exact_result=None, gps_coordinates=None):
+        try:
+            return self._aurora_once(query, exact_result, gps_coordinates)
+        except Exception:
+            # The ARM translation layer can crash the app once on its first launch.
+            if self.d.app_current().get('package') == AURORA:
+                raise
+            self.capture('aurora-crash-before-retry', self.d.app_current().get('package'))
+            print('::notice title=Collection::Aurora left foreground; restarting once', flush=True)
+            return self._aurora_once(query, exact_result, gps_coordinates)
+
+    def _aurora_once(self, query, exact_result=None, gps_coordinates=None):
         self.start(AURORA)
         self.prepare_aurora()
         prefix = AURORA + ':id/'
@@ -392,7 +416,7 @@ class Collector:
 
     def aurora_gps(self, query, coordinates):
         if not self.d.serial.startswith('emulator-'):
-            raise RuntimeError('GPS injection requires an Android emulator')
+            raise RuntimeError('Location injection requires an Android emulator')
         latitude, longitude = coordinates
         enabled = self.d.shell(['cmd', 'location', 'set-location-enabled', 'true'])
         if enabled.exit_code:
@@ -401,11 +425,24 @@ class Collector:
             response = self.d.shell(['pm', 'grant', AURORA, 'android.permission.' + permission])
             if response.exit_code:
                 raise RuntimeError(response.output)
-        command = ['adb', '-s', self.d.serial, 'emu', 'geo', 'fix', str(longitude), str(latitude)]
-        def inject_gps():
-            response = subprocess.run(command, check=True, capture_output=True, text=True, timeout=10)
-            if 'OK' not in response.stdout or 'KO:' in response.stdout:
-                raise RuntimeError('GPS injection failed: ' + response.stdout)
+        def shell_checked(command):
+            response = self.d.shell(command)
+            if response.exit_code:
+                raise RuntimeError(response.output)
+
+        # Aurora can request only NETWORK_PROVIDER, leaving emulator GPS inactive.
+        # Feed both providers explicitly; these are marked mock by Android.
+        shell_checked(['appops', 'set', 'com.android.shell', 'android:mock_location', 'allow'])
+        for provider in ('gps', 'network'):
+            shell_checked(['cmd', 'location', 'providers', 'add-test-provider', provider])
+            shell_checked(['cmd', 'location', 'providers', 'set-test-provider-enabled', provider, 'true'])
+
+        def inject_location():
+            for provider in ('gps', 'network'):
+                shell_checked(['cmd', 'location', 'providers', 'set-test-provider-location', provider,
+                               '--location', f'{latitude},{longitude}', '--accuracy', '5'])
+
+        inject_location()
         prefix = AURORA + ':id/'
         # Explicitly select current location, rather than reusing a saved custom city.
         self.click(resourceId=prefix + 'subtitle')
@@ -413,33 +450,28 @@ class Collector:
         time.sleep(1)
         if any('You will now receive notifications' in n.get('text', '') for n in self.nodes(AURORA)):
             self.capture('aurora-current-location-confirmation', AURORA)
-            self.click(resourceId='android:id/button1')
+            self.click_if_present(resourceId='android:id/button1')
 
         def gps_fix():
-            # A fresh emulator can discard fixes before an app registers its location request.
-            inject_gps()
+            if self.d.app_current().get('package') != AURORA:
+                raise RuntimeError('Aurora left foreground while setting current location')
+            inject_location()
             time.sleep(.5)
             response = self.d.shell('dumpsys location', timeout=10)
             if response.exit_code:
                 raise RuntimeError(response.output)
             dump = response.output
             (self.output / 'aurora-location-service.txt').write_text(dump, encoding='utf-8')
-            for provider in ('fused', 'gps'):
-                matches = re.findall(r'last location=Location\[' + provider + r' (-?\d+\.\d+),(-?\d+\.\d+)', dump)
-                for lat_text, lon_text in matches:
-                    lat, lon = float(lat_text), float(lon_text)
-                    if abs(lat - latitude) < .0001 and abs(lon - longitude) < .0001:
-                        return {'provider': provider, 'latitude': lat, 'longitude': lon}
-            return None
+            return aurora_network_fix(dump, latitude, longitude)
 
-        location_proof = self.wait(gps_fix, 'target GPS fix delivered to emulator')
+        location_proof = self.wait(gps_fix, 'target mock network location delivered to Aurora')
         subtitle = self.wait(lambda: self._aurora_subtitle(prefix, 'current location'),
-                             'Aurora probability updated for current GPS location')
+                             'Aurora probability updated for current injected location')
         title = self.d(resourceId=prefix + 'title').get_text()
         kp = re.search(r'KP Index\s+(\d+(?:\.\d+)?)', title)
         chance = re.search(r'(\d+(?:\.\d+)?)%', subtitle)
         evidence = self.capture('aurora', AURORA)
-        return {'package': AURORA, 'query': query, 'location_mode': 'emulator_gps',
+        return {'package': AURORA, 'query': query, 'location_mode': 'emulator_test_providers',
                 'selected_location': None, 'requested_coordinates': {
                     'latitude': latitude, 'longitude': longitude},
                 'emulator_location_fix': location_proof,
@@ -465,7 +497,7 @@ def main():
     parser.add_argument('--timeout', type=float, default=30)
     parser.add_argument('--windy-result', help='Exact full search-result description to select')
     parser.add_argument('--aurora-gps', nargs=2, type=float, metavar=('LAT', 'LON'),
-                        help='Use emulator GPS/current location for Aurora; explicit latitude and longitude')
+                        help='Use emulator GPS/network test providers for Aurora current location; explicit latitude and longitude')
     parser.add_argument('--aurora-result', help='Exact full suggestion text to select')
     args = parser.parse_args()
     if not args.location.strip() or args.timeout <= 0:

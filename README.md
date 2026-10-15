@@ -51,16 +51,16 @@ Windy 选择第一条地理地点结果，排除分类、摄像头和站点。Au
 
 当前模拟器测试中，Aurora 的自定义地点候选未返回；其 autocomplete 接口的独立请求得到 HTTP 403。此问题与安装来源检查分开记录，搜索失败不会假报成功。
 
-### Aurora 使用模拟器 GPS
+### Aurora 使用模拟器坐标
 
-这条路径仍采集 App 页面：把显式坐标注入模拟器 GPS，授予前台定位权限，再在 Aurora 选择 CURRENT LOCATION。Windy 继续用输入地点搜索。
+这条路径仍采集 App 页面：把显式坐标注入模拟器 GPS 和 network 测试定位提供器，授予前台定位权限，再在 Aurora 选择 CURRENT LOCATION。Windy 继续用输入地点搜索。
 
 ```sh
 uv run main.py --serial emulator-5554 --location Мурманск \
   --aurora-gps 68.9707 33.0827 --timeout 45
 ```
 
-`--aurora-gps` 参数顺序为纬度、经度；仅接受 Android 模拟器。脚本核对模拟器 GPS/fused 的最后定位是否匹配。
+`--aurora-gps` 参数顺序为纬度、经度；仅接受 Android 模拟器。脚本核对 network 提供器的最后定位是否为目标坐标、带有 mock 标记，且有 Aurora 的定位订阅。使用 Android `cmd location providers` 测试接口，避免 App 只订阅 network 时 GPS 注入无法生效。JSON 中 `location_mode=emulator_test_providers`，明确记录模拟坐标来源。
 JSON 记录 requested_coordinates 和 emulator_location_fix；Aurora 首页只显示“current location”，因此不会声称 App 已显示城市名称。
 该方式不等同于 Aurora 的自定义地点搜索通过，也不自动把其他城市名称转换成坐标。
 
